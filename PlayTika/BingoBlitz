@@ -1,0 +1,41 @@
+Account Takeover via OAuth Token Injection in setToken endpoint - Bingo Blitz
+Summary:
+The endpoint /bingo-app/public/non-authenticated/oc/setToken accepts any valid
+OneConnect JWT without verifying that it belongs to the current session or requester.
+An attacker who obtains another user's access_token can inject it into this endpoint
+and gain full authenticated access to the victim's account without knowing their password.
+Steps To Reproduce:
+Victim authenticates via OneConnect on play.bingoblitzvip.com, generating a JWT via:
+POST https://one-zuul.bingoblitz.com/one/oauth/token
+Attacker obtains victim's access_token (via XSS, network interception, or other means)
+Attacker calls setToken with victim's token from a clean session (no prior auth):
+POST /bingo-app/public/non-authenticated/oc/setToken HTTP/2
+Host: play.bingoblitzvip.com
+Content-Type: application/x-www-form-urlencoded
+access_token=<victim_jwt>
+Server responds success:true and sets octoken=<victim_jwt> as HttpOnly cookie
+Attacker accesses https://play.bingoblitzvip.com/oc using those cookies and is
+authenticated as the victim. Server confirms with victim's data in response:
+email_field=joacoroller-test1@wearehackerone.com
+buffalo_id=1047552765
+Note: Same vulnerability confirmed on play.bingoblitz.com
+Recommendations:
+Validate that the access_token belongs to the currently authenticated session before setting it as a cookie
+Bind the token to the session ID or device fingerprint server-side
+Implement rate limiting on the setToken endpoint
+Verify the token against one-zuul before accepting it
+Supporting Material/References:
+Screenshot 1: Burp Suite - POST /one/oauth/token response showing test1 access_token (credential_value: joacoroller-test1@wearehackerone.com)
+Screenshot 2: Burp Suite Repeater - POST /bingo-app/public/non-authenticated/oc/setToken with no session cookies, response shows success:true and octoken cookie being set
+Screenshot 3: Terminal - Full PoC showing token injection resulting in authenticated session as joacoroller-test1@wearehackerone.com (buffalo_id: 1047552765)
+Both test accounts (joacoroller-test1 and joacoroller-test2) are registered
+under @wearehackerone.com as per program rules.
+Impact
+An attacker who obtains a valid OneConnect access_token belonging to another user
+can immediately take over that account by injecting the token into the setToken
+endpoint. No password or device access is required.
+Successful exploitation allows the attacker to:
+Access the victim's Bingo Blitz account and all associated data (PII, game progress)
+Spend the victim's in-game currency and purchased items
+Access the victim's email address and buffalo_id
+Potentially pivot to other Playtika games sharing the same OneConnect SSO
